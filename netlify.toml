@@ -1,0 +1,23 @@
+# Netlify: connect the repo, or drag build/web onto app.netlify.com/drop.
+# Netlify's build image has no Flutter, so the simplest route is to build
+# locally (see DEPLOY.md) and drop the build/web folder.
+[[headers]]
+  for = "/*"
+  [headers.values]
+    X-Content-Type-Options = "nosniff"
+    Referrer-Policy = "same-origin"
+
+[[headers]]
+  for = "/upsc_sw.js"
+  [headers.values]
+    Cache-Control = "no-cache"
+
+[[headers]]
+  for = "/index.html"
+  [headers.values]
+    Cache-Control = "no-cache"
+
+[[headers]]
+  for = "/flutter_bootstrap.js"
+  [headers.values]
+    Cache-Control = "no-cache"

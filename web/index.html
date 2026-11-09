@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <!--
+    The base href is filled in by `flutter build web --base-href ...`.
+    Use "/" for a site at the root, or "/<repo-name>/" on GitHub Pages.
+  -->
+  <base href="$FLUTTER_BASE_HREF">
+
+  <meta charset="UTF-8">
+  <meta content="IE=Edge" http-equiv="X-UA-Compatible">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="Study tracker for UPSC and UPPCS: syllabus, revision, planner, timer, answer writing, tests and current affairs. Works offline.">
+  <meta name="color-scheme" content="dark light">
+  <meta name="theme-color" content="#0B0F19" media="(prefers-color-scheme: dark)">
+  <meta name="theme-color" content="#F8FAFC" media="(prefers-color-scheme: light)">
+
+  <!-- iOS -->
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="UPSC Centre">
+  <link rel="apple-touch-icon" href="icons/Icon-maskable-192.png">
+
+  <link rel="icon" type="image/png" href="favicon.png"/>
+  <title>UPSC Command Centre</title>
+  <link rel="manifest" href="manifest.json">
+
+  <style>
+    html, body { margin: 0; height: 100%; }
+    body { background: #0B0F19; }
+    #splash {
+      position: fixed; inset: 0; display: flex; flex-direction: column;
+      align-items: center; justify-content: center; gap: 14px;
+      background: #0B0F19; color: #94A3B8;
+      font: 14px/1.4 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+      transition: opacity .25s ease;
+    }
+    #splash img { width: 84px; height: 84px; border-radius: 20px; }
+    #splash.gone { opacity: 0; pointer-events: none; }
+    @media (prefers-color-scheme: light) {
+      body, #splash { background: #F8FAFC; }
+      #splash { color: #475569; }
+    }
+  </style>
+</head>
+<body>
+  <div id="splash">
+    <img src="icons/Icon-192.png" alt="">
+    <div>Loading UPSC Command Centre…</div>
+    <noscript>This app needs JavaScript.</noscript>
+  </div>
+
+  <script>
+    // Helpers the Dart code calls (see lib/core/platform/platform_web.dart).
+    (function () {
+      var installEvent = null;
+      window.addEventListener('beforeinstallprompt', function (e) {
+        e.preventDefault();
+        installEvent = e;
+      });
+      window.addEventListener('appinstalled', function () { installEvent = null; });
+
+      window.upscApp = {
+        // Saves text as a file download.
+        download: function (name, content, mime) {
+          var blob = new Blob([content], { type: mime + ';charset=utf-8' });
+          var url = URL.createObjectURL(blob);
+          var a = document.createElement('a');
+          a.href = url;
+          a.download = name;
+          a.style.display = 'none';
+          document.body.appendChild(a);
+          a.click();
+          setTimeout(function () { a.remove(); URL.revokeObjectURL(url); }, 4000);
+        },
+
+        // Opens the file picker; resolves with the file's text, or null.
+        pickText: function (accept) {
+          return new Promise(function (resolve) {
+            var input = document.createElement('input');
+            input.type = 'file';
+            input.accept = accept || '';
+            input.style.display = 'none';
+            var settled = false;
+            function finish(value) {
+              if (settled) return;
+              settled = true;
+              input.remove();
+              resolve(value);
+            }
+            input.addEventListener('change', function () {
+              var f = input.files && input.files[0];
+              if (!f) { finish(null); return; }
+              f.text().then(finish, function () { finish(null); });
+            });
+            input.addEventListener('cancel', function () { finish(null); });
+            document.body.appendChild(input);
+            input.click();
+          });
+        },
+
+        persist: function () {
+          if (navigator.storage && navigator.storage.persist) {
+            return navigator.storage.persist().catch(function () { return null; });
+          }
+          return Promise.resolve(null);
+        },
+        persisted: function () {
+          if (navigator.storage && navigator.storage.persisted) {
+            return navigator.storage.persisted().catch(function () { return null; });
+          }
+          return Promise.resolve(null);
+        },
+
+        canInstall: function () { return installEvent !== null; },
+        install: function () {
+          if (!installEvent) return Promise.resolve(false);
+          var e = installEvent;
+          installEvent = null;
+          e.prompt();
+          return e.userChoice.then(
+            function (r) { return !!r && r.outcome === 'accepted'; },
+            function () { return false; });
+        },
+        isStandalone: function () {
+          return (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches) ||
+                 window.navigator.standalone === true;
+        },
+
+        // Address-bar / status-bar colour that follows the in-app theme.
+        setThemeColor: function (hex) {
+          var metas = document.querySelectorAll('meta[name="theme-color"]');
+          for (var i = 0; i < metas.length; i++) {
+            metas[i].removeAttribute('media');
+            metas[i].setAttribute('content', hex);
+          }
+          document.body.style.background = hex;
+        }
+      };
+
+      // Hide the loading screen once Flutter has drawn.
+      window.addEventListener('flutter-first-frame', function () {
+        var s = document.getElementById('splash');
+        if (!s) return;
+        s.classList.add('gone');
+        setTimeout(function () { s.remove(); }, 400);
+      });
+
+      // Offline support (see upsc_sw.js).
+      if ('serviceWorker' in navigator) {
+        window.addEventListener('load', function () {
+          navigator.serviceWorker.register('upsc_sw.js').catch(function () {});
+        });
+      }
+    })();
+  </script>
+
+  <script src="flutter_bootstrap.js" async></script>
+</body>
+</html>

@@ -27,5 +27,9 @@ Future<bool> promptInstallApp() async => false;
 /// True when running as an installed app (not in a browser tab).
 bool isInstalledApp() => false;
 
+/// True when an "install this app" button makes sense (a browser tab that
+/// is not already the installed app).
+bool canShowInstallHelp() => false;
+
 /// "#RRGGBB" for the browser's address-bar / status-bar colour.
 void setBrowserThemeColor(String hex) {}

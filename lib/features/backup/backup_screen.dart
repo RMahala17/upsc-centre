@@ -12,6 +12,7 @@ import '../../core/storage/db.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/utils/dates.dart';
 import '../../core/widgets/charts.dart';
+import '../../core/widgets/install_guide.dart';
 import '../../core/widgets/page_body.dart';
 import '../../core/widgets/section_card.dart';
 import '../../core/widgets/theme_mode_button.dart';
@@ -270,10 +271,9 @@ class _BackupScreenState extends ConsumerState<BackupScreen> {
   }
 
   Future<void> _install() async {
-    final ok = await promptInstallApp();
+    await installOrGuide(context);
     if (!mounted) return;
     setState(() => _installed = isInstalledApp());
-    if (!ok) _toast('Install was cancelled.');
   }
 
   // ---------- CSV ----------
@@ -609,7 +609,7 @@ class _BackupScreenState extends ConsumerState<BackupScreen> {
                   icon: const Icon(Icons.shield_outlined),
                   label: const Text('Request protection'),
                 ),
-              if (!_installed && canInstallApp())
+              if (!_installed && canShowInstallHelp())
                 FilledButton.tonalIcon(
                   onPressed: _install,
                   icon: const Icon(Icons.install_mobile_outlined),

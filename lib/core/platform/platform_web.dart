@@ -82,6 +82,8 @@ bool isInstalledApp() {
   }
 }
 
+bool canShowInstallHelp() => !isInstalledApp();
+
 String? _lastThemeColor;
 
 void setBrowserThemeColor(String hex) {

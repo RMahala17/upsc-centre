@@ -3,12 +3,14 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
+import '../../core/platform/platform_services.dart';
 import '../../core/storage/backup_meta.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/utils/dates.dart';
 import '../../core/utils/durations.dart';
 import '../../core/utils/streaks.dart';
 import '../../core/widgets/charts.dart';
+import '../../core/widgets/install_guide.dart';
 import '../../core/widgets/page_body.dart';
 import '../../core/widgets/progress_bar.dart';
 import '../../core/widgets/section_card.dart';
@@ -20,6 +22,7 @@ import '../currentaffairs/ca_controller.dart';
 import '../planner/planner_controller.dart';
 import '../planner/planner_logic.dart';
 import '../pyq/pyq_controller.dart';
+import '../pyq/pyq_logic.dart';
 import '../revision/revision_controller.dart';
 import '../revision/revision_logic.dart' as rev;
 import '../syllabus/syllabus_controller.dart';
@@ -31,6 +34,8 @@ import '../timer/timer_logic.dart';
 import 'dashboard_dialogs.dart';
 import 'dashboard_logic.dart';
 import 'dashboard_prefs.dart';
+import 'home_logic.dart';
+import 'home_widgets.dart';
 
 class DashboardScreen extends ConsumerWidget {
   const DashboardScreen({super.key});
@@ -85,10 +90,34 @@ class DashboardScreen extends ConsumerWidget {
       notes: notes,
     );
 
+    final pyqStats = summarizePyqs(pyqs);
+    final revPyq = revisionPyqProgress(
+      cycles,
+      pyqPractised: pyqStats.practised,
+      pyqTotal: pyqStats.total,
+    );
+    final overall = overallPercent(
+      gsDone: gs.overall.completed,
+      gsTotal: gs.overall.total,
+      anDone: an.completed,
+      anTotal: an.denominator,
+    );
+
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Dashboard'),
+        toolbarHeight: 64,
+        titleSpacing: 16,
+        title: BrandTitle(
+          badge: examBadge(prefs.examDates, today),
+          dateText: DateFormat('EEE, d MMM').format(today),
+        ),
         actions: [
+          if (canShowInstallHelp())
+            IconButton(
+              tooltip: 'Install app',
+              icon: const Icon(Icons.install_mobile_outlined),
+              onPressed: () => installOrGuide(context),
+            ),
           const ThemeModeButton(),
           IconButton(
             tooltip: 'Daily goal and exam dates',
@@ -101,20 +130,63 @@ class DashboardScreen extends ConsumerWidget {
         child: ListView(
           padding: const EdgeInsets.fromLTRB(16, 4, 16, 32),
           children: [
-            Text(
-              greetingFor(now.hour),
-              style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w700),
-            ),
-            const SizedBox(height: 2),
-            Text(
-              DateFormat('EEEE, d MMMM y').format(today),
-              style: const TextStyle(color: AppColors.muted),
-            ),
-            const SizedBox(height: 16),
             if (backupReminderDue(ageDays, hasData: hasData)) ...[
               _BackupBanner(text: backupReminderText(ageDays)),
               const SizedBox(height: 12),
             ],
+            OverviewCard(
+              percent: overall,
+              gsPercent: gs.overall.percent,
+              anthroPercent: an.percent,
+              onTap: () => context.go('/analytics'),
+            ),
+            const SizedBox(height: 12),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(
+                  child: SummaryCard(
+                    title: 'GS syllabus',
+                    percent: gs.overall.percent,
+                    caption: gs.overall.total == 0
+                        ? 'Not set up'
+                        : '${gs.overall.completed}/${gs.overall.total}',
+                    fraction: gs.overall.fraction,
+                    color: AppColors.violet,
+                    onTap: () => context.go('/syllabus'),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: SummaryCard(
+                    title: 'Anthropology',
+                    percent: an.percent,
+                    caption: an.denominator == 0
+                        ? 'Not set up'
+                        : '${an.completed}/${an.denominator}',
+                    fraction: an.fraction,
+                    color: AppColors.teal,
+                    onTap: () => context.go('/optional'),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: SummaryCard(
+                    title: 'Revision & PYQ',
+                    percent: revPyq.percent,
+                    caption: revPyq.total == 0
+                        ? 'Nothing yet'
+                        : '${revPyq.done}/${revPyq.total}',
+                    fraction: revPyq.fraction,
+                    color: AppColors.violet,
+                    onTap: () => context.go('/revision'),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            NextTargetCard(todayKey: todayKey),
+            const SizedBox(height: 12),
             _CountdownCard(
               prefs: prefs,
               today: today,
@@ -130,13 +202,15 @@ class DashboardScreen extends ConsumerWidget {
                   lecturesCompletedOn(gs.lectures, today) + an.completedOn(today),
             ),
             const SizedBox(height: 12),
+            WeekHoursCard(
+              days: weekHours(sessions, today),
+              goalMin: prefs.dailyGoalMin,
+              onTap: () => context.go('/analytics'),
+            ),
+            const SizedBox(height: 12),
             _PlanCard(todayKey: todayKey),
             const SizedBox(height: 12),
             _RevisionCard(today: today),
-            const SizedBox(height: 12),
-            _ProgressCard(now: now),
-            const SizedBox(height: 12),
-            _WeekCard(sessions: sessions, today: today),
             const SizedBox(height: 12),
             if (attention.isNotEmpty)
               SectionCard(
@@ -514,88 +588,6 @@ class _RevisionCard extends ConsumerWidget {
               ),
             ),
           ],
-        ],
-      ),
-    );
-  }
-}
-
-class _ProgressCard extends ConsumerWidget {
-  const _ProgressCard({required this.now});
-
-  final DateTime now;
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final gs = ref.watch(syllabusProvider).overall;
-    final an = ref.watch(anthroProvider);
-
-    final pace = an.pace(now);
-    final targetFinish = an.targetFinish(now);
-    String? anthroLine;
-    if (an.remaining <= 0 && an.completed > 0) {
-      anthroLine = 'All planned lectures are done.';
-    } else if (pace != null && pace.enoughData && pace.eta != null) {
-      anthroLine = 'At your pace (${pace.lecturesPerDay.toStringAsFixed(1)}'
-          ' a day) you finish on ${DateFormat('d MMM y').format(pace.eta!)}.';
-    } else if (targetFinish != null) {
-      anthroLine = 'At ${an.dailyTarget} a day you finish on '
-          '${DateFormat('d MMM y').format(targetFinish)}.';
-    }
-
-    return SectionCard(
-      title: 'Syllabus progress',
-      onTap: () => context.go('/analytics'),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          BreakdownRow(
-            label: 'GS lectures',
-            value: gs.total == 0
-                ? 'none entered'
-                : '${gs.completed} of ${gs.total} · ${gs.percent}%',
-            fraction: gs.fraction,
-            color: AppColors.violet,
-          ),
-          BreakdownRow(
-            label: 'Anthropology',
-            value: '${an.completed} of ${an.denominator} · ${an.percent}%',
-            fraction: an.fraction,
-            caption: anthroLine,
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _WeekCard extends StatelessWidget {
-  const _WeekCard({required this.sessions, required this.today});
-
-  final List<StudySession> sessions;
-  final DateTime today;
-
-  @override
-  Widget build(BuildContext context) {
-    final days = lastNDays(sessions, today, 7);
-    final weekSec = days.fold<int>(0, (a, d) => a + d.sec);
-
-    return SectionCard(
-      title: 'Last 7 days',
-      trailing: Text(
-        formatHm(weekSec),
-        style: const TextStyle(color: AppColors.muted),
-      ),
-      onTap: () => context.go('/analytics'),
-      child: BarSeriesChart(
-        points: [
-          for (final d in days)
-            BarPoint(
-              label: DateFormat('E').format(d.day),
-              value: d.sec.toDouble(),
-              valueLabel: formatHm(d.sec),
-              highlight: dateKey(d.day) == dateKey(today),
-            ),
         ],
       ),
     );
